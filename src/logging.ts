@@ -17,6 +17,7 @@
 export interface Logger {
   debug: LogFunc;
   info: LogFunc;
+  warn: LogFunc;
   error: LogFunc;
 }
 
@@ -36,7 +37,7 @@ export interface LogFunc {
  */
 export function prependName(logger: Logger, name: string): Logger {
   const prefix = (
-    severity: 'debug' | 'info' | 'error',
+    severity: 'debug' | 'info' | 'warn' | 'error',
     msg: string,
     param?: any
   ): void => {
@@ -50,6 +51,7 @@ export function prependName(logger: Logger, name: string): Logger {
   return {
     debug: (msg: string, param?: any): void => prefix('debug', msg, param),
     info: (msg: string, param?: any): void => prefix('info', msg, param),
+    warn: (msg: string, param?: any): void => prefix('warn', msg, param),
     error: (msg: string, param?: any): void => prefix('error', msg, param),
   };
 }
