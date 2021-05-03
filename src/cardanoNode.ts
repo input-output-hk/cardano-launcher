@@ -230,13 +230,17 @@ function makeArgs(
   };
 }
 
-export interface NodeStartService extends StartService {
+export interface NodeServiceInfo {
   /** This will contain the cardano-node socket file path. */
   socketPath: string;
 
   /** This will contain the TCP port which the cardano-node is listening on. */
   listenPort: number;
+
+  stateDir: DirPath;
 }
+
+export type NodeStartService = StartService<NodeServiceInfo>;
 
 /**
  * Chooses the command-line arguments for the node.
@@ -291,7 +295,13 @@ export async function startCardanoNode(
     shutdownMethod: ShutdownMethod.CloseFD,
     // set working directory to stateDir -- config file may have relative paths for logs.
     cwd: stateDir,
-    socketPath: args.socketFile,
-    listenPort: args.listen.port,
+    status: {
+      filePath: path.join(stateDir, 'cardano-node-status.json'),
+      info: {
+        socketPath: args.socketFile,
+        listenPort: args.listen.port,
+        stateDir,
+      },
+    },
   };
 }

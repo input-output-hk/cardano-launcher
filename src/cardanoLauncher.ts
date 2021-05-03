@@ -21,7 +21,6 @@ import {
   Service,
   ServiceExitStatus,
   ServiceStatus,
-  StartService,
   setupService,
   serviceExitStatusMessage,
 } from './service';
@@ -34,9 +33,12 @@ import {
   LaunchConfig,
   cardanoWalletStartService,
   WalletStartService,
+  WalletServiceInfo,
 } from './cardanoWallet';
+import { Api } from './walletApi';
 
 import * as cardanoNode from './cardanoNode';
+import { NodeServiceInfo, NodeStartService } from './cardanoNode';
 import Signals = NodeJS.Signals;
 
 export {
@@ -45,50 +47,9 @@ export {
   serviceExitStatusMessage,
   Service,
 } from './service';
-export { LaunchConfig } from './cardanoWallet';
-
-/*******************************************************************************
- * Api
- ******************************************************************************/
-
-interface RequestParams {
-  port: number;
-  path: string;
-  hostname: string;
-  protocol: string;
-}
-
-/**
- * Connection parameters for the `cardano-wallet` API.
- * These should be used to build the HTTP requests.
- */
-export interface Api {
-  /**
-   * API base URL, including trailling slash.
-   */
-  baseUrl: string;
-
-  /**
-   * URL components which can be used with the HTTP client library of
-   * your choice.
-   */
-  requestParams: RequestParams;
-}
-
-class V2Api implements Api {
-  /** URL of the API, including a trailing slash. */
-  readonly baseUrl: string;
-  /** URL components which can be used with the HTTP client library of
-   * your choice. */
-  readonly requestParams: RequestParams;
-
-  constructor(port: number, protocol = 'http:') {
-    const hostname = '127.0.0.1';
-    const path = '/v2/';
-    this.baseUrl = `${protocol}//${hostname}:${port}${path}`;
-    this.requestParams = { port, path, hostname, protocol };
-  }
-}
+export { LaunchConfig, WalletStartService } from './cardanoWallet';
+export { NodeStartService } from './cardanoNode';
+export { Api } from './walletApi';
 
 /*******************************************************************************
  * Exit status types
@@ -158,7 +119,7 @@ export class Launcher {
   /**
    * Use this attribute to monitor and control the `cardano-wallet` process.
    */
-  readonly walletService: Service;
+  readonly walletService: Service<WalletServiceInfo>;
 
   /**
    * Use this to access the `cardano-wallet` API server.
@@ -168,7 +129,7 @@ export class Launcher {
   /**
    * Use this to monitor the `cardano-node` process.
    */
-  readonly nodeService: Service;
+  readonly nodeService: Service<NodeServiceInfo>;
 
   /** Logging adapter */
   protected logger: Logger;
@@ -209,11 +170,7 @@ export class Launcher {
     );
 
     this.walletBackend = {
-      getApi: (): V2Api =>
-        new V2Api(
-          this.apiPort,
-          config.tlsConfiguration !== undefined ? 'https:' : 'http:'
-        ),
+      getApi: () => this.walletService?.getConfig()?.status?.info?.api as Api,
       events: new EventEmitter<{
         ready: (api: Api) => void;
         exit: (status: ExitStatus) => void;
@@ -222,7 +179,7 @@ export class Launcher {
 
     start.wallet
       .then((startService: WalletStartService) => {
-        this.apiPort = startService.apiPort;
+        this.apiPort = startService.status.info.port;
       })
       .catch(passthroughErrorLogger);
 
@@ -368,7 +325,7 @@ export class Launcher {
   private static makeServiceCommands(
     config: LaunchConfig,
     logger: Logger
-  ): { wallet: Promise<WalletStartService>; node: Promise<StartService> } {
+  ): { wallet: Promise<WalletStartService>; node: Promise<NodeStartService> } {
     logger.info(
       `Creating state directory ${config.stateDir} (if it doesn't already exist)`
     );
@@ -389,7 +346,7 @@ export class Launcher {
   private static nodeExe(
     baseDir: DirPath,
     config: LaunchConfig
-  ): Promise<StartService> {
+  ): Promise<NodeStartService> {
     switch (config.nodeConfig.kind) {
       case 'shelley':
         return cardanoNode.startCardanoNode(
