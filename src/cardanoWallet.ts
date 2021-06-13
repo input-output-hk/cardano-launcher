@@ -19,6 +19,7 @@ import * as cardanoNode from './cardanoNode';
 import { ServerTlsConfiguration } from './tls';
 import { StartService, ShutdownMethod } from './service';
 import { DirPath } from './common';
+import { Api, V2Api } from './walletApi';
 
 /*******************************************************************************
  * Configuration
@@ -123,11 +124,15 @@ export interface LaunchConfig {
  * Starting the wallet
  ******************************************************************************/
 
-export interface WalletStartService extends StartService {
+export interface WalletServiceInfo {
   /** This will contain the port which the API is listening on,
    *  after the service has started. */
-  apiPort: number;
+  port: number;
+  api: Api;
+  tls?: ServerTlsConfiguration;
 }
+
+export type WalletStartService = StartService<WalletServiceInfo>;
 
 /**
  * Produces a [[WalletStartService]] description of how to start
@@ -147,8 +152,9 @@ export async function cardanoWalletStartService(
   const apiPort = config.apiPort || (await getPort());
   const commandSuffix =
     config.nodeConfig.kind === 'shelley' ? '' : '-' + config.nodeConfig.kind;
+  const command = 'cardano-wallet' + commandSuffix;
   const base: WalletStartService = {
-    command: 'cardano-wallet' + commandSuffix,
+    command,
     args: [
       'serve',
       '--shutdown-handler',
@@ -189,7 +195,14 @@ export async function cardanoWalletStartService(
         }
       : undefined,
     shutdownMethod: ShutdownMethod.CloseStdin,
-    apiPort,
+    status: {
+      filePath: path.join(baseDir, `${command}-status.json`),
+      info: {
+        port: apiPort,
+        api: new V2Api(apiPort, !!config.tlsConfiguration),
+        tls: config.tlsConfiguration,
+      },
+    },
   };
   const addArgs = (args: string[]): WalletStartService =>
     _.assign(base, { args: base.args.concat(args) });

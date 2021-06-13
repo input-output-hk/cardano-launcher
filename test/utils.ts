@@ -23,8 +23,10 @@ export function testService(
   command: string,
   args: string[],
   shutdownMethod = ShutdownMethod.CloseStdin
-): Promise<StartService> {
-  return new Promise(resolve => resolve({ command, args, shutdownMethod }));
+): Promise<StartService<unknown>> {
+  return new Promise(resolve =>
+    resolve({ command, args, shutdownMethod, status: { info: {} } })
+  );
 }
 
 /**
@@ -37,14 +39,14 @@ export const expectProcessToBeGone = (pid: number, signal = 0): void => {
 /**
  * @return mutable array which will contain events as they occur.
  */
-export const collectEvents = (service: Service): ServiceStatus[] => {
+export const collectEvents = (service: Service<unknown>): ServiceStatus[] => {
   const events: ServiceStatus[] = [];
   service.events.on('statusChanged', status => events.push(status));
   return events;
 };
 
 export interface MockLog {
-  severity: 'debug' | 'info' | 'error';
+  severity: 'debug' | 'info' | 'warn' | 'error';
   msg: string;
   param: unknown;
 }
@@ -56,7 +58,7 @@ export interface MockLogger extends Logger {
 export function mockLogger(echo = false): MockLogger {
   const logs: MockLog[] = [];
 
-  const mockLog = (severity: 'debug' | 'info' | 'error'): LogFunc => {
+  const mockLog = (severity: 'debug' | 'info' | 'warn' | 'error'): LogFunc => {
     return (msg: string, param?: unknown): void => {
       if (echo) {
         if (param) {
@@ -72,6 +74,7 @@ export function mockLogger(echo = false): MockLogger {
   return {
     debug: mockLog('debug'),
     info: mockLog('info'),
+    warn: mockLog('warn'),
     error: mockLog('error'),
     getLogs: (): MockLog[] => logs,
   };

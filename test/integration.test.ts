@@ -1,7 +1,14 @@
 // Copyright © 2020 IOHK
 // License: Apache-2.0
 
-import { Launcher, LaunchConfig, ServiceStatus, Api } from '../src';
+import {
+  Launcher,
+  LaunchConfig,
+  ServiceStatus,
+  Api,
+  WalletStartService,
+  NodeStartService,
+} from '../src';
 
 import * as http from 'http';
 import * as https from 'https';
@@ -246,14 +253,15 @@ describe('Starting cardano-wallet (and its node)', () => {
       });
 
       await launcher.start();
-      const walletApi = launcher.walletBackend.getApi();
-      const nodeConfig = launcher.nodeService.getConfig() as cardanoNode.NodeStartService;
+      const walletInfo = (launcher.walletService.getConfig() as WalletStartService)
+        .status?.info;
+      const nodeInfo = (launcher.nodeService.getConfig() as NodeStartService)
+        .status.info;
+
       for (const host of listExternalAddresses()) {
         console.log(`Testing ${host}`);
-        expect(
-          await testPort(host, walletApi.requestParams.port, console)
-        ).toBe(false);
-        expect(await testPort(host, nodeConfig.listenPort, console)).toBe(
+        expect(await testPort(host, walletInfo['port'], console)).toBe(false);
+        expect(await testPort(host, nodeInfo['listenPort'], console)).toBe(
           false
         );
       }

@@ -10,7 +10,7 @@
  */
 
 import { spawn, ChildProcess, StdioOptions } from 'child_process';
-import { WriteStream } from 'fs';
+import { WriteStream, promises } from 'fs';
 import { Writable } from 'stream';
 import _ from 'lodash';
 import { EventEmitter } from 'tsee';
@@ -65,7 +65,7 @@ export enum ServiceStatus {
 /**
  * A launched process.
  */
-export interface Service {
+export interface Service<S> {
   /**
    * @return - a promise that will be fulfilled when the process has
    *   started. The returned PID is not guaranteed to be running. It
@@ -105,7 +105,7 @@ export interface Service {
   /** @return the 'StartService' configuration, or null if the service
    *   has not been configured yet.
    */
-  getConfig(): StartService | null;
+  getConfig(): StartService<S> | null;
 
   /**
    * An [[EventEmitter]] that can be used to register handlers when
@@ -163,11 +163,11 @@ export const cleanShutdownFD = 3;
  * @param childProcessLogWriteStream - WriteStream for writing the child process data events from stdout and stderr.
  * @return A handle on the [[Service]].
  */
-export function setupService(
-  cfgPromise: Promise<StartService>,
+export function setupService<S>(
+  cfgPromise: Promise<StartService<S>>,
   logger: Logger = console,
   childProcessLogWriteStream?: WriteStream
-): Service {
+): Service<S> {
   const events = new EventEmitter<{
     statusChanged: (status: ServiceStatus) => void;
   }>();
@@ -175,7 +175,7 @@ export function setupService(
   let status = ServiceStatus.NotStarted;
   // Fulfilled promise of service command-line.
   // This will always be defined if status > Starting.
-  let cfg: StartService;
+  let cfg: StartService<S>;
   // NodeJS child process object, or null if not running.
   let proc: ChildProcess | null = null;
   // Pipe file descriptor for clean shutdown, or null if not yet running.
@@ -253,6 +253,7 @@ export function setupService(
       // corresponds to last element of `stdio` above
       shutdownFD = cleanShutdownFD;
     }
+    await writeStatusEntry(cfg, proc.pid, logger);
     setStatus(ServiceStatus.Started);
     proc.on('exit', (code, signal) => {
       onStopped(code, signal);
@@ -391,7 +392,7 @@ export function setupService(
     waitForExit,
     getStatus: (): ServiceStatus => status,
     getProcess: (): ChildProcess | null => proc,
-    getConfig: (): StartService | null => cfg,
+    getConfig: (): StartService<S> | null => cfg,
     events,
   };
 }
@@ -399,7 +400,7 @@ export function setupService(
 /**
  * Describes the command to run for the service.
  */
-export interface StartService {
+export interface StartService<S> {
   /** Program name. Will be searched for in `PATH`. */
   command: string;
   /** Command-line arguments. */
@@ -413,4 +414,32 @@ export interface StartService {
    * `docs/windows-clean-shutdown.md`.
    */
   shutdownMethod: ShutdownMethod;
+  /** Extra info which is written to the service status file. */
+  status: {
+    filePath?: string;
+    info: S;
+  };
+}
+
+export async function writeStatusEntry(
+  service: StartService<unknown>,
+  pid: number,
+  logger: Logger
+): Promise<void> {
+  const entry = _.assign(
+    {
+      service: service.command,
+      parentPid: process.pid,
+      pid,
+    },
+    service.status.info
+  );
+  const file = service.status.filePath;
+  if (file) {
+    try {
+      return await promises.writeFile(JSON.stringify(entry), file);
+    } catch (err) {
+      logger.warn(`Service.start: Could not write status file {file}: ${err}`);
+    }
+  }
 }
